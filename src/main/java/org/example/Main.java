@@ -1,35 +1,143 @@
 package org.example;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import database.DatabaseConnection;
 import okhttp3.*;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.ProtocolException;
-import java.net.URL;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.PreparedStatement;
 
 public class Main {
     private static final String API_BASE_URL = "https://api.stackexchange.com/";
 
     public static void main(String[] args) throws IOException {
-       getJavaPopularQuestions(100);
+//        JsonArray questions = searchJavaTaggedQuestions();
+        Connection connection = DatabaseConnection.getInstance();
+
+        try {
+            deleteQuestions(connection);
+            for (int i = 1; i <= 10; i++) { //get i pages, 100 entries per page
+                JsonArray questions = getJavaPopularQuestions(i);
+                insertQuestions(questions, connection);
+            }
+        } catch (SQLException e) {
+            // if the error message is "out of memory",
+            // it probably means no database file is found
+            System.err.println(e.getMessage());
+        } finally {
+            try {
+                if (connection != null)
+                    connection.close();
+            } catch (SQLException e) {
+                // connection close failed.
+                System.err.println(e.getMessage());
+            }
+        }
+
     }
-    public static void getJavaPopularQuestions(int pagesize) throws IOException {
+
+    public static JsonArray getJavaPopularQuestions(int page) throws IOException {
+        String api = "https://api.stackexchange.com/2.3/tags/java/faq?page=" + page + "&pagesize=100&site=stackoverflow&filter=!6Wfm_gTKI0ROr";
+        System.out.println(api);
+        Response response = callAPI(api);
+
+        Gson gson = new Gson();
+        JsonObject jsonObject = gson.fromJson(response.body().string(), JsonObject.class);
+        System.out.println("quota remaining " + jsonObject.get("quota_remaining"));
+        JsonArray items = jsonObject.getAsJsonArray("items");
+        return items;
+    }
+
+    public static JsonArray searchJavaTaggedQuestions(int page) throws IOException {
+        String url = "https://api.stackexchange.com/2.3/search?page=" + page + "&pagesize=100&order=desc&sort=activity&tagged=java&site=stackoverflow&filter=!6Wfm_gTKI0ROr";
+        System.out.println(url);
+        Response response = callAPI(url);
+        Gson gson = new Gson();
+        JsonObject jsonObject = gson.fromJson(response.body().string(), JsonObject.class);
+        System.out.println("quota remaining " + jsonObject.get("quota_remaining"));
+        JsonArray items = jsonObject.getAsJsonArray("items");
+        return items;
+    }
+
+    private static Response callAPI(String url) throws IOException {
         OkHttpClient client = new OkHttpClient().newBuilder()
                 .build();
         Request request = new Request.Builder()
-                .url("https://api.stackexchange.com/2.3/tags/java/faq?pagesize=100&site=stackoverflow")
-                .method("GET",null)
+                .url(url)
+                .method("GET", null)
                 .addHeader("Cookie", "prov=2d4dc682-403e-4461-82c2-24343867f91e")
                 .build();
         Response response = client.newCall(request).execute();
-        Gson gson= new Gson();
-        JsonObject jsonObject = gson.fromJson(response.body().string(),JsonObject.class);
-        System.out.println(jsonObject.get("quota_remaining"));
+        return response;
+    }
+
+    public static void insertQuestions(JsonArray array, Connection connection) throws SQLException {
+
+        PreparedStatement statement = connection.prepareStatement("insert or replace into questions values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        for (int i = 0; i < array.size(); i++) {
+            JsonObject question = array.get(i).getAsJsonObject();
+            String tags = question.get("tags").toString().replace("[", "").replace("]", "");
+            String user_id;
+            if (question.get("owner") == null || question.get("owner").getAsJsonObject().get("user_id") == null) {
+                user_id = null;
+            } else {
+                user_id = question.get("owner").getAsJsonObject().get("user_id").toString();
+            }
+            String is_answered = question.get("is_answered").toString();
+            String view_count = question.get("view_count").toString();
+            String answer_count = question.get("answer_count").toString();
+            String score = question.get("score").toString();
+            String last_activity_date;
+            if (question.get("last_activity_date") != null) {
+                last_activity_date = question.get("last_activity_date").toString();
+            } else {
+                last_activity_date = null;
+            }
+            String creation_date = question.get("creation_date").toString();
+            String question_id = question.get("question_id").toString();
+            String title = question.get("title").toString();
+            String body = question.get("body").toString();
+//            String accepted_answer_id = question.get("accepted_answer_id").toString();
+            String accepted_answer_id;
+            if (question.get("accepted_answer_id") != null) {
+                accepted_answer_id = question.get("accepted_answer_id").toString();
+            } else {
+                accepted_answer_id = null;
+            }
+//            String closed_date = question.get("closed_date").toString();
+            String closed_date = null;
+            String last_edit_date;
+            if (question.get("last_edit_date") != null) {
+                last_edit_date = question.get("last_edit_date").toString();
+            } else {
+                last_edit_date = null;
+            }
+            statement.setString(1, question_id);
+            statement.setString(2, score);
+            statement.setString(3, view_count);
+            statement.setString(4, answer_count);
+            statement.setString(5, is_answered);
+            statement.setString(6, title);
+            statement.setString(7, tags);
+            statement.setString(8, accepted_answer_id);
+            statement.setString(9, last_activity_date);
+            statement.setString(10, creation_date);
+            statement.setString(11, closed_date);
+            statement.setString(12, last_edit_date);
+            statement.setString(13, body);
+            statement.setString(14, user_id);
+            statement.addBatch();
+        }
+        statement.executeBatch();
+    }
+
+    public static void deleteQuestions(Connection connection) throws SQLException {
+        PreparedStatement statement = connection.prepareStatement("delete from questions");
+        statement.execute();
     }
 }
 
