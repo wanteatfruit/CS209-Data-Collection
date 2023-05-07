@@ -17,13 +17,14 @@ import java.util.List;
 public class Main {
     private static final String API_BASE_URL = "https://api.stackexchange.com/";
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws IOException, SQLException {
 //        JsonArray questions = searchJavaTaggedQuestions();
         Connection connection = DatabaseConnection.getInstance();
 
         try {
             List<Integer> idList = getAcceptedAnswerId();
-            getAnswerById(idList);
+            getAnswerById(idList); // also insert into database
+
 //            deleteQuestions(connection);
 //            for (int i = 1; i <=20; i++) { //get i pages, 100 entries per page
 //                JsonArray questions = searchJavaTaggedQuestions(i); //activity date从新到老
@@ -58,12 +59,11 @@ public class Main {
     }
 
     //up to 100 ids per query, separated by comma
-    public static JsonArray getAnswerById(List<Integer> id) throws IOException {
+    public static JsonArray getAnswerById(List<Integer> id) throws IOException, SQLException {
 
         //split id into 100 per query
         for (int i = 0; i <1+ id.size()/100; i++) {
             List<Integer> subList = id.subList(i*100, Math.min((i+1)*100, id.size()));
-            System.out.println(subList.size());
             StringBuilder api = new StringBuilder("https://api.stackexchange.com/2.3/answers/");
             for (int j = 0; j < subList.size(); j++) {
                 api.append(subList.get(j));
@@ -71,17 +71,36 @@ public class Main {
                     api.append(";");
                 }
             }
-            api.append("?order=desc&sort=activity&site=stackoverflow");
+            api.append("?pagesize=100&order=desc&sort=activity&site=stackoverflow&filter=!6Wfm_gUdwU3-5");
+            System.out.println(api);
             Response response = callAPI(api.toString());
             Gson gson = new Gson();
             JsonObject jsonObject = gson.fromJson(response.body().string(), JsonObject.class);
             JsonArray items = jsonObject.getAsJsonArray("items");
             System.out.println(items.size());
+            insertAnswers(items, DatabaseConnection.getInstance());
         }
 
 
-
         return null;
+    }
+
+    public static void insertAnswers(JsonArray answers, Connection connection) throws SQLException {
+        PreparedStatement preparedStatement = connection.prepareStatement("insert into answers values (?,?,?,?,?,?,?,?)");
+        for (int i = 0; i < answers.size(); i++) {
+            JsonObject answer = answers.get(i).getAsJsonObject();
+            preparedStatement.setInt(1, answer.get("answer_id").getAsInt());
+            preparedStatement.setString(2, answer.get("is_accepted").toString());
+            preparedStatement.setInt(3, answer.get("score").getAsInt());
+            preparedStatement.setString(8, answer.get("body").getAsString());
+            String tags = answer.get("tags").toString().replace("[", "").replace("]", "");
+            preparedStatement.setString(7, tags);
+            preparedStatement.setInt(6, answer.get("question_id").getAsInt());
+            preparedStatement.setString(5, answer.get("creation_date").toString());
+            preparedStatement.setString(4, answer.get("last_activity_date").toString());
+            preparedStatement.addBatch();
+        }
+        preparedStatement.executeBatch();
     }
 
     public static JsonArray getJavaPopularQuestions(int page) throws IOException {
