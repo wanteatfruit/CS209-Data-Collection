@@ -8,8 +8,11 @@ import okhttp3.*;
 
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.List;
 
 public class Main {
     private static final String API_BASE_URL = "https://api.stackexchange.com/";
@@ -19,15 +22,13 @@ public class Main {
         Connection connection = DatabaseConnection.getInstance();
 
         try {
-            deleteQuestions(connection);
-            for (int i = 1; i <= 10; i++) { //get i pages, 100 entries per page
-                JsonArray questions = getJavaPopularQuestions(i);
-                insertQuestions(questions, connection);
-            }
-        } catch (SQLException e) {
-            // if the error message is "out of memory",
-            // it probably means no database file is found
-            System.err.println(e.getMessage());
+            List<Integer> idList = getAcceptedAnswerId();
+            getAnswerById(idList);
+//            deleteQuestions(connection);
+//            for (int i = 1; i <=20; i++) { //get i pages, 100 entries per page
+//                JsonArray questions = searchJavaTaggedQuestions(i); //activity date从新到老
+//                insertQuestions(questions, connection);
+//            }
         } finally {
             try {
                 if (connection != null)
@@ -38,6 +39,49 @@ public class Main {
             }
         }
 
+    }
+
+    public static List<Integer> getAcceptedAnswerId(){
+        String sql = "select * from questions where accepted_answer_id is not null";
+        Connection connection = DatabaseConnection.getInstance();
+        List<Integer> id = new ArrayList<>();
+        try {
+            PreparedStatement statement = connection.prepareStatement(sql);
+            ResultSet resultSet = statement.executeQuery();
+            while (resultSet.next()){
+                id.add(resultSet.getInt("accepted_answer_id"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return id;
+    }
+
+    //up to 100 ids per query, separated by comma
+    public static JsonArray getAnswerById(List<Integer> id) throws IOException {
+
+        //split id into 100 per query
+        for (int i = 0; i <1+ id.size()/100; i++) {
+            List<Integer> subList = id.subList(i*100, Math.min((i+1)*100, id.size()));
+            System.out.println(subList.size());
+            StringBuilder api = new StringBuilder("https://api.stackexchange.com/2.3/answers/");
+            for (int j = 0; j < subList.size(); j++) {
+                api.append(subList.get(j));
+                if(j != subList.size()-1){
+                    api.append(";");
+                }
+            }
+            api.append("?order=desc&sort=activity&site=stackoverflow");
+            Response response = callAPI(api.toString());
+            Gson gson = new Gson();
+            JsonObject jsonObject = gson.fromJson(response.body().string(), JsonObject.class);
+            JsonArray items = jsonObject.getAsJsonArray("items");
+            System.out.println(items.size());
+        }
+
+
+
+        return null;
     }
 
     public static JsonArray getJavaPopularQuestions(int page) throws IOException {

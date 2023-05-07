@@ -6,6 +6,7 @@ import java.sql.SQLException;
 
 public class DatabaseConnection {
     static String TOKEN = "token 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";
+    //TODO: change the path to your own path
     static String JDBC = "jdbc:sqlite:D:\\SUSTech2023S\\CS209\\DataCollection\\database\\stackoverflow.db";
     private static Connection connection;
 
