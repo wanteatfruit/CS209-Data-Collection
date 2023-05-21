@@ -22,8 +22,8 @@ public class Main {
         Connection connection = DatabaseConnection.getInstance();
 
         try {
-//            List<Integer> questionId = getQuestionId(connection);
-//            getAllAnswers(questionId);
+            List<Integer> questionId = getQuestionId(connection);
+            getAllAnswers(questionId);
 //            List<Integer> idList = getAcceptedAnswerId();
 //            getAnswerById(idList); // also insert into database
 
@@ -33,8 +33,8 @@ public class Main {
 //                insertQuestions(questions, connection);
 //            }
 
-            List<Integer> answerId = getSimpleAnswerId(connection);
-            getComment(answerId);
+//            List<Integer> answerId = getSimpleAnswerId(connection);
+//            getComment(answerId);
 
         } finally {
             try {
@@ -75,7 +75,7 @@ public class Main {
                     api.append(";");
                 }
             }
-            api.append("/answers?pagesize=100&order=desc&sort=activity&site=stackoverflow&filter=!aiRaBmwhgNiKQh");
+            api.append("/answers?pagesize=100&order=desc&sort=activity&site=stackoverflow&filter=!)Q0(G*.k9rY9WCFkifXzXao0");
             Response response = callAPI(api.toString());
             Gson gson = new Gson();
             JsonObject jsonObject = gson.fromJson(response.body().string(), JsonObject.class);
@@ -178,7 +178,7 @@ public class Main {
         preparedStatement.executeBatch();
     }
     public static void insertToSimpleAnswer(JsonArray answers, Connection connection)throws SQLException{
-        String sql = "insert into answer_simple values (?,?,?,?)";
+        String sql = "insert into answer_simple values (?,?,?,?,?)";
         PreparedStatement preparedStatement = connection.prepareStatement(sql);
         for (int i = 0; i < answers.size(); i++) {
             JsonObject answer = answers.get(i).getAsJsonObject();
@@ -198,6 +198,7 @@ public class Main {
             }
             preparedStatement.setString(3, user_id);
             preparedStatement.setString(4, display_name);
+            preparedStatement.setInt(5, answer.get("up_vote_count").getAsInt());
             preparedStatement.addBatch();
         }
         preparedStatement.executeBatch();
